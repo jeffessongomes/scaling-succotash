@@ -77,7 +77,7 @@ describe('GameActionSchema', () => {
     expect(result.success).toBe(true)
   })
 
-  it('should reject PIN with letters', () => {
+  it('should accept alphanumeric PIN when length is correct (length-only validation)', () => {
     const result = GameActionSchema.safeParse({ pin: 'abc123' })
     expect(result.success).toBe(true)
   })

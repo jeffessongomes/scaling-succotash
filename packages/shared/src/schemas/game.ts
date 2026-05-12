@@ -8,8 +8,8 @@ export const PlayerJoinSchema = z.object({
 
 export const PlayerAnswerSchema = z.object({
   pin: z.string().length(6),
-  questionId: z.string().min(1),
-  optionId: z.string().min(1),
+  questionId: z.string().cuid(),
+  optionId: z.string().cuid(),
   answeredInMs: z.number().int().min(0),
 })
 
