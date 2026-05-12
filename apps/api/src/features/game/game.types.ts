@@ -45,3 +45,8 @@ export interface PlayerAnswerPayload {
 export interface HostActionPayload {
   pin: string
 }
+
+export interface AnswerRecord {
+  optionId: string
+  answeredInMs: number
+}

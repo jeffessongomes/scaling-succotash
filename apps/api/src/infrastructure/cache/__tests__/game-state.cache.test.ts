@@ -7,6 +7,7 @@ const { mockRedis } = vi.hoisted(() => ({
     get: vi.fn(),
     del: vi.fn().mockResolvedValue(1),
     hsetnx: vi.fn().mockResolvedValue(1),
+    hgetall: vi.fn().mockResolvedValue({}),
     zadd: vi.fn().mockResolvedValue(1),
   },
 }))
@@ -21,6 +22,7 @@ const {
   deleteSession,
   saveAnswer,
   updateScore,
+  getAnswers,
 } = await import('../game-state.cache.js')
 
 const createSession = (overrides?: Partial<GameSessionState>): GameSessionState => ({
@@ -80,21 +82,49 @@ describe('game-state.cache', () => {
   })
 
   describe('saveAnswer', () => {
-    it('should use HSETNX and return true when answer is new', async () => {
+    it('should serialize optionId and answeredInMs as "optionId:answeredInMs" in HSETNX', async () => {
       mockRedis.hsetnx.mockResolvedValueOnce(1)
-      const result = await saveAnswer('123456', 'question-1', 'participant-1', 5000)
+      const result = await saveAnswer('123456', 'question-1', 'participant-1', 'opt-correct', 5000)
       expect(result).toBe(true)
       expect(mockRedis.hsetnx).toHaveBeenCalledWith(
         'game:answers:123456:question-1',
         'participant-1',
-        '5000',
+        'opt-correct:5000',
       )
     })
 
     it('should return false for duplicate answer (HSETNX returns 0)', async () => {
       mockRedis.hsetnx.mockResolvedValueOnce(0)
-      const result = await saveAnswer('123456', 'question-1', 'participant-1', 5000)
+      const result = await saveAnswer('123456', 'question-1', 'participant-1', 'opt-correct', 5000)
       expect(result).toBe(false)
+    })
+  })
+
+  describe('getAnswers', () => {
+    it('should parse "opt-correct:5000" to { optionId, answeredInMs }', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({ 'participant-1': 'opt-correct:5000' })
+      const result = await getAnswers('123456', 'question-1')
+      expect(result).toEqual({
+        'participant-1': { optionId: 'opt-correct', answeredInMs: 5000 },
+      })
+    })
+
+    it('should return empty object when hash is empty', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({})
+      const result = await getAnswers('123456', 'question-1')
+      expect(result).toEqual({})
+    })
+
+    it('should parse multiple participants correctly', async () => {
+      mockRedis.hgetall.mockResolvedValueOnce({
+        'participant-1': 'opt-correct:5000',
+        'participant-2': 'opt-wrong:12000',
+      })
+      const result = await getAnswers('123456', 'question-1')
+      expect(result).toEqual({
+        'participant-1': { optionId: 'opt-correct', answeredInMs: 5000 },
+        'participant-2': { optionId: 'opt-wrong', answeredInMs: 12000 },
+      })
     })
   })
 

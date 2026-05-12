@@ -165,19 +165,18 @@ async function revealAnswers(
     distribution[optId] = 0
   }
 
-  for (const [participantId, answeredInMs] of Object.entries(answers)) {
+  for (const [participantId, answer] of Object.entries(answers)) {
     const participant = session.participants[participantId]
     if (!participant) continue
 
-    const isCorrect = answers[participantId] !== undefined && correctOptionId !== ''
+    const isCorrect = answer.optionId === correctOptionId
     if (isCorrect) {
-      const points = calculateScore(question.points, timeLimitMs, answeredInMs)
+      const points = calculateScore(question.points, timeLimitMs, answer.answeredInMs)
       participant.score += points
       await updateScore(session.pin, participantId, participant.score)
     }
-    const optId = String(answeredInMs)
-    if (optId in distribution) {
-      distribution[optId] = (distribution[optId] ?? 0) + 1
+    if (answer.optionId in distribution) {
+      distribution[answer.optionId] = (distribution[answer.optionId] ?? 0) + 1
     }
   }
 
@@ -486,7 +485,7 @@ export function setupGameSocket(io: Server): void {
       const timeLimitMs = question.timeLimitSecs * 1000
       if (answeredInMs > timeLimitMs) return
 
-      const saved = await saveAnswer(pin, questionId, participant.id, answeredInMs)
+      const saved = await saveAnswer(pin, questionId, participant.id, optionId, answeredInMs)
       if (!saved) return
 
       const answeredCount = Object.keys(await getAnswers(pin, questionId)).length
@@ -496,8 +495,6 @@ export function setupGameSocket(io: Server): void {
       if (hostSocket) {
         hostSocket.emit('session:answer-received', { answeredCount, totalPlayers })
       }
-
-      void optionId
     })
 
     socket.on('disconnect', async () => {

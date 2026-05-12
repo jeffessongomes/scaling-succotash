@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { GameSessionState } from '../game.types.js'
+import type { GameSessionState, AnswerRecord } from '../game.types.js'
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
@@ -28,7 +28,8 @@ const { mockCache } = vi.hoisted(() => ({
     saveSession: vi.fn().mockResolvedValue(undefined),
     getSession: vi.fn(),
     deleteSession: vi.fn().mockResolvedValue(undefined),
-    getAnswers: vi.fn().mockResolvedValue({}),
+    deleteAnswers: vi.fn().mockResolvedValue(undefined),
+    getAnswers: vi.fn().mockResolvedValue({} as Record<string, AnswerRecord>),
   },
 }))
 
@@ -152,8 +153,8 @@ describe('game.service', () => {
   })
 
   describe('finalizeSession', () => {
-    it('should persist GameAnswers, update scores in DB and clean Redis', async () => {
-      const session: GameSessionState = {
+    function createSessionWithParticipant(): GameSessionState {
+      return {
         sessionId: 'session-abc',
         pin: '482971',
         quizId: 'quiz-abc',
@@ -166,6 +167,10 @@ describe('game.service', () => {
           'p-1': { id: 'p-1', nickname: 'Ana', avatarId: '1', score: 750, socketId: 's1', isConnected: true },
         },
       }
+    }
+
+    it('should persist GameAnswers, update scores in DB and clean Redis', async () => {
+      const session = createSessionWithParticipant()
 
       mockPrisma.gameSession.update.mockResolvedValueOnce({ id: 'session-abc' })
       mockPrisma.gameAnswer.createMany.mockResolvedValueOnce({ count: 0 })
@@ -177,6 +182,65 @@ describe('game.service', () => {
         expect.objectContaining({ where: { id: 'session-abc' } }),
       )
       expect(mockCache.deleteSession).toHaveBeenCalledWith('482971')
+    })
+
+    it('should persist the player optionId (not answeredInMs as string) in GameAnswer', async () => {
+      const session = createSessionWithParticipant()
+
+      mockCache.getAnswers.mockResolvedValueOnce({
+        'p-1': { optionId: 'opt-1', answeredInMs: 8000 },
+      } satisfies Record<string, AnswerRecord>)
+      mockPrisma.quiz.findUnique.mockResolvedValueOnce({
+        questions: [createQuiz().questions[0]],
+      })
+      mockPrisma.gameSession.update.mockResolvedValueOnce({ id: 'session-abc' })
+      mockPrisma.gameAnswer.createMany.mockResolvedValueOnce({ count: 1 })
+      mockPrisma.gameParticipant.upsert.mockResolvedValue({ id: 'p-1', score: 750 })
+
+      await finalizeSession(session)
+
+      const createManyCall = mockPrisma.gameAnswer.createMany.mock.calls[0] as [{ data: Array<{ optionId: string; isCorrect: boolean; answeredInMs: number }> }]
+      const record = createManyCall[0].data[0]
+      expect(record.optionId).toBe('opt-1')
+      expect(record.answeredInMs).toBe(8000)
+    })
+
+    it('should set isCorrect = false when player chose the wrong option', async () => {
+      const session = createSessionWithParticipant()
+
+      mockCache.getAnswers.mockResolvedValueOnce({
+        'p-1': { optionId: 'opt-2', answeredInMs: 5000 },
+      } satisfies Record<string, AnswerRecord>)
+      mockPrisma.quiz.findUnique.mockResolvedValueOnce({
+        questions: [createQuiz().questions[0]],
+      })
+      mockPrisma.gameSession.update.mockResolvedValueOnce({ id: 'session-abc' })
+      mockPrisma.gameAnswer.createMany.mockResolvedValueOnce({ count: 1 })
+      mockPrisma.gameParticipant.upsert.mockResolvedValue({ id: 'p-1', score: 750 })
+
+      await finalizeSession(session)
+
+      const createManyCall = mockPrisma.gameAnswer.createMany.mock.calls[0] as [{ data: Array<{ isCorrect: boolean }> }]
+      expect(createManyCall[0].data[0].isCorrect).toBe(false)
+    })
+
+    it('should set isCorrect = true when player chose the correct option', async () => {
+      const session = createSessionWithParticipant()
+
+      mockCache.getAnswers.mockResolvedValueOnce({
+        'p-1': { optionId: 'opt-1', answeredInMs: 5000 },
+      } satisfies Record<string, AnswerRecord>)
+      mockPrisma.quiz.findUnique.mockResolvedValueOnce({
+        questions: [createQuiz().questions[0]],
+      })
+      mockPrisma.gameSession.update.mockResolvedValueOnce({ id: 'session-abc' })
+      mockPrisma.gameAnswer.createMany.mockResolvedValueOnce({ count: 1 })
+      mockPrisma.gameParticipant.upsert.mockResolvedValue({ id: 'p-1', score: 750 })
+
+      await finalizeSession(session)
+
+      const createManyCall = mockPrisma.gameAnswer.createMany.mock.calls[0] as [{ data: Array<{ isCorrect: boolean }> }]
+      expect(createManyCall[0].data[0].isCorrect).toBe(true)
     })
   })
 })

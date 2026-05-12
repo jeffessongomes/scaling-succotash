@@ -3,6 +3,7 @@ import http from 'http'
 import { Server } from 'socket.io'
 import { io as ioc, type Socket as ClientSocket } from 'socket.io-client'
 import jwt from 'jsonwebtoken'
+import type { AnswerRecord } from '../game.types.js'
 
 const { mockCache } = vi.hoisted(() => ({
   mockCache: {
@@ -10,7 +11,7 @@ const { mockCache } = vi.hoisted(() => ({
     saveSession: vi.fn().mockResolvedValue(undefined),
     updateScore: vi.fn().mockResolvedValue(undefined),
     saveAnswer: vi.fn().mockResolvedValue(true),
-    getAnswers: vi.fn().mockResolvedValue({}),
+    getAnswers: vi.fn().mockResolvedValue({} as Record<string, AnswerRecord>),
     deleteSession: vi.fn().mockResolvedValue(undefined),
     deleteAnswers: vi.fn().mockResolvedValue(undefined),
   },
@@ -279,7 +280,9 @@ describe('game.socket', () => {
         hostSocketId: hostSocket.id ?? '',
         status: 'QUESTION',
       })
-      mockCache.getAnswers.mockResolvedValue({ [participantId]: 5000 })
+      mockCache.getAnswers.mockResolvedValue({
+        [participantId]: { optionId: 'opt-correct', answeredInMs: 5000 },
+      } satisfies Record<string, AnswerRecord>)
       mockPrisma.quiz.findUnique.mockResolvedValue({
         questions: [{ id: 'q-1', timeLimitSecs: 30 }],
       })
@@ -287,6 +290,7 @@ describe('game.socket', () => {
       const answerReceivedPromise = waitForEvent<{ answeredCount: number; totalPlayers: number }>(
         hostSocket,
         'session:answer-received',
+        8000,
       )
 
       playerSocket.emit('player:answer', {
@@ -296,7 +300,129 @@ describe('game.socket', () => {
 
       const result = await answerReceivedPromise
       expect(result.answeredCount).toBe(1)
-    })
+    }, 10_000)
+
+    it('should pass optionId to saveAnswer', async () => {
+      const hostSocket = connectHost()
+      await connectAndWait(hostSocket)
+
+      const playerSocket = connectPlayer()
+      await connectAndWait(playerSocket)
+
+      const session = createLobbySession()
+      const participantId = 'p-1'
+      session.participants[participantId] = {
+        id: participantId, nickname: 'Ana', avatarId: '1',
+        score: 0, socketId: playerSocket.id ?? '', isConnected: true,
+      }
+
+      await joinRoom(hostSocket, '482971', session)
+
+      mockCache.getSession.mockResolvedValue({
+        ...session,
+        hostSocketId: hostSocket.id ?? '',
+        status: 'QUESTION',
+      })
+      mockCache.getAnswers.mockResolvedValue({})
+      mockPrisma.quiz.findUnique.mockResolvedValue({
+        questions: [{ id: 'q-1', timeLimitSecs: 30 }],
+      })
+
+      playerSocket.emit('player:answer', {
+        pin: '482971', questionId: 'q-1',
+        optionId: 'opt-correct', answeredInMs: 5000,
+      })
+
+      await new Promise((r) => setTimeout(r, 500))
+
+      expect(mockCache.saveAnswer).toHaveBeenCalledWith(
+        '482971', 'q-1', participantId, 'opt-correct', 5000,
+      )
+    }, 8000)
+  })
+
+  describe('game:reveal-answers', () => {
+    async function setupRevealScenario(hostSocket: ClientSocket, answers: Record<string, AnswerRecord>) {
+      const session = createLobbySession()
+      session.participants['p-1'] = {
+        id: 'p-1', nickname: 'Ana', avatarId: '1',
+        score: 0, socketId: 'player-sock', isConnected: true,
+      }
+
+      await joinRoom(hostSocket, '482971', session)
+
+      mockCache.getSession.mockResolvedValue({
+        ...session,
+        hostSocketId: hostSocket.id ?? '',
+        status: 'QUESTION',
+      })
+      mockCache.getAnswers.mockResolvedValue(answers)
+      mockPrisma.quiz.findUnique.mockResolvedValue(createQuizWithQuestions())
+    }
+
+    it('should set distribution[correctOptionId] = 1 and score > 0 when player answers correctly', async () => {
+      const hostSocket = connectHost()
+      await connectAndWait(hostSocket)
+
+      await setupRevealScenario(hostSocket, {
+        'p-1': { optionId: 'opt-correct', answeredInMs: 5000 },
+      })
+
+      const revealedPromise = waitForEvent<{
+        correctOptionId: string
+        distribution: Record<string, number>
+        participants: Array<{ id: string; score: number }>
+      }>(hostSocket, 'session:answers-revealed')
+
+      hostSocket.emit('game:reveal-answers', { pin: '482971' })
+
+      const result = await revealedPromise
+      expect(result.correctOptionId).toBe('opt-correct')
+      expect(result.distribution['opt-correct']).toBe(1)
+      expect(result.distribution['opt-wrong']).toBe(0)
+      const p1 = result.participants.find((p) => p.id === 'p-1')
+      expect(p1?.score).toBeGreaterThan(0)
+    }, 8000)
+
+    it('should set distribution[wrongOptionId] = 1 and score = 0 when player answers incorrectly', async () => {
+      const hostSocket = connectHost()
+      await connectAndWait(hostSocket)
+
+      await setupRevealScenario(hostSocket, {
+        'p-1': { optionId: 'opt-wrong', answeredInMs: 5000 },
+      })
+
+      const revealedPromise = waitForEvent<{
+        correctOptionId: string
+        distribution: Record<string, number>
+        participants: Array<{ id: string; score: number }>
+      }>(hostSocket, 'session:answers-revealed')
+
+      hostSocket.emit('game:reveal-answers', { pin: '482971' })
+
+      const result = await revealedPromise
+      expect(result.distribution['opt-wrong']).toBe(1)
+      expect(result.distribution['opt-correct']).toBe(0)
+      const p1 = result.participants.find((p) => p.id === 'p-1')
+      expect(p1?.score).toBe(0)
+    }, 8000)
+
+    it('should produce zeroed distribution when no players answered', async () => {
+      const hostSocket = connectHost()
+      await connectAndWait(hostSocket)
+
+      await setupRevealScenario(hostSocket, {})
+
+      const revealedPromise = waitForEvent<{
+        distribution: Record<string, number>
+      }>(hostSocket, 'session:answers-revealed')
+
+      hostSocket.emit('game:reveal-answers', { pin: '482971' })
+
+      const result = await revealedPromise
+      expect(result.distribution['opt-correct']).toBe(0)
+      expect(result.distribution['opt-wrong']).toBe(0)
+    }, 8000)
   })
 
   describe('game:end', () => {

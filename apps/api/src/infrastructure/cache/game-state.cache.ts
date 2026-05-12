@@ -1,6 +1,6 @@
 import { redis } from '../../config/redis.js'
 import { env } from '../../config/env.js'
-import type { GameSessionState } from '../../features/game/game.types.js'
+import type { GameSessionState, AnswerRecord } from '../../features/game/game.types.js'
 
 export async function saveSession(session: GameSessionState): Promise<void> {
   await redis.set(
@@ -34,12 +34,13 @@ export async function saveAnswer(
   pin: string,
   questionId: string,
   participantId: string,
+  optionId: string,
   answeredInMs: number,
 ): Promise<boolean> {
   const result = await redis.hsetnx(
     `game:answers:${pin}:${questionId}`,
     participantId,
-    String(answeredInMs),
+    `${optionId}:${answeredInMs}`,
   )
   return result === 1
 }
@@ -48,11 +49,15 @@ export async function updateScore(pin: string, participantId: string, score: num
   await redis.zadd(`game:scores:${pin}`, score, participantId)
 }
 
-export async function getAnswers(pin: string, questionId: string): Promise<Record<string, number>> {
+export async function getAnswers(pin: string, questionId: string): Promise<Record<string, AnswerRecord>> {
   const raw = await redis.hgetall(`game:answers:${pin}:${questionId}`)
-  const result: Record<string, number> = {}
-  for (const [participantId, ms] of Object.entries(raw)) {
-    result[participantId] = Number(ms)
+  const result: Record<string, AnswerRecord> = {}
+  for (const [participantId, value] of Object.entries(raw)) {
+    const colonIdx = value.indexOf(':')
+    result[participantId] = {
+      optionId: value.slice(0, colonIdx),
+      answeredInMs: Number(value.slice(colonIdx + 1)),
+    }
   }
   return result
 }

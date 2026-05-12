@@ -169,24 +169,23 @@ export async function finalizeSession(session: GameSessionState): Promise<void> 
   if (quiz) {
     for (const question of quiz.questions) {
       const answers = await getAnswers(session.pin, question.id)
-      for (const [participantId, answeredInMs] of Object.entries(answers)) {
+      for (const [participantId, answer] of Object.entries(answers)) {
         const participant = session.participants[participantId]
         if (!participant) continue
 
         const correctOption = question.options.find((o) => o.isCorrect)
-        const chosenOptionId = Object.keys(answers).find((k) => k === participantId)
+        const isCorrect = answer.optionId === correctOption?.id
         const timeLimitMs = question.timeLimitSecs * 1000
-        const isCorrect = chosenOptionId === correctOption?.id
 
         answerRecords.push({
           sessionId: session.sessionId,
           participantId,
           questionId: question.id,
-          optionId: answers[participantId]?.toString() ?? '',
+          optionId: answer.optionId,
           isCorrect,
           pointsEarned: participant.score,
-          answeredInMs,
-          answeredAt: new Date(now.getTime() - (timeLimitMs - answeredInMs)),
+          answeredInMs: answer.answeredInMs,
+          answeredAt: new Date(now.getTime() - (timeLimitMs - answer.answeredInMs)),
         })
       }
     }
