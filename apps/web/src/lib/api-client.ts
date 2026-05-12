@@ -8,12 +8,5 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    const status = error.response?.status
-    if (status === 401) {
-      // Auth errors are handled by NextAuth session logic
-      return Promise.reject(error)
-    }
-    return Promise.reject(error)
-  },
+  (error: AxiosError) => Promise.reject(error),
 )

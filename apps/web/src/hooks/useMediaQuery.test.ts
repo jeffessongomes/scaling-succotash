@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act } from '../test/test-utils'
 import { useMediaQuery } from './useMediaQuery'
 
 function mockMatchMedia(matches: boolean) {
