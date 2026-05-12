@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Dependencies (rebuilt inside Docker)
+**/node_modules
+**/.pnpm-store
+
+# Build artifacts (rebuilt inside Docker)
+**/.next
+**/dist
+**/.turbo
+**/.cache
+
+# Test artifacts
+**/coverage
+**/__snapshots__
+
+# Env files (injected at runtime via docker-compose env_file)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Dev config
+**/.eslintrc*
+**/.prettierrc*
+**/vitest.config.*
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
+**/*.log
+
+# Claude / docs
+.claude
+docs
+
+# Infra scripts not needed inside containers
+infra/raspberry
