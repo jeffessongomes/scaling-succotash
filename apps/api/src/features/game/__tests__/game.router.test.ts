@@ -6,6 +6,7 @@ import {
   UnprocessableEntityError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from '../../../shared/errors/http-errors.js'
 
 const teacherUser: AuthenticatedUser = {
@@ -137,6 +138,7 @@ describe('game.router', () => {
         currentQuestionIndex: 0,
         quizId: 'quiz-abc',
         participants: {},
+        authorId: 'user-teacher-001',
         hostSocketId: 'socket-1',
         questionStartedAt: null,
         hostDisconnectedAt: null,
@@ -166,6 +168,7 @@ describe('game.router', () => {
         currentQuestionIndex: 0,
         quizId: 'quiz-abc',
         participants: {},
+        authorId: 'user-teacher-001',
         hostSocketId: 'socket-1',
         questionStartedAt: null,
         hostDisconnectedAt: null,
@@ -188,6 +191,28 @@ describe('game.router', () => {
         .set('Authorization', 'Bearer token')
 
       expect(res.status).toBe(404)
+    })
+
+    it('should return 403 when authenticated user is not the session owner', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'LOBBY',
+        currentQuestionIndex: 0,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'another-user-999',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app)
+        .delete('/api/sessions/482971')
+        .set('Authorization', 'Bearer token')
+
+      expect(res.status).toBe(403)
+      expect(mockGameService.finalizeSession).not.toHaveBeenCalled()
     })
   })
 })

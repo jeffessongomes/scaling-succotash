@@ -29,6 +29,7 @@ const createSession = (overrides?: Partial<GameSessionState>): GameSessionState 
   sessionId: 'session-abc',
   pin: '123456',
   quizId: 'quiz-xyz',
+  authorId: 'user-teacher',
   hostSocketId: 'socket-host-1',
   status: 'LOBBY',
   currentQuestionIndex: 0,

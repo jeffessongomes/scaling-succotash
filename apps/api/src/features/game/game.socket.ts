@@ -26,6 +26,8 @@ interface JwtPayload {
 const activeTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const activeIntervals = new Map<string, ReturnType<typeof setInterval>>()
 const hostReconnectTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const socketPinMap = new Map<string, string>()
+const socketEventRate = new Map<string, { count: number; resetAt: number }>()
 
 function clearGameTimers(pin: string): void {
   const timer = activeTimers.get(pin)
@@ -38,6 +40,18 @@ function clearGameTimers(pin: string): void {
     clearInterval(interval)
     activeIntervals.delete(pin)
   }
+}
+
+function checkRateLimit(socketId: string): boolean {
+  const now = Date.now()
+  const entry = socketEventRate.get(socketId) ?? { count: 0, resetAt: now + 1000 }
+  if (now > entry.resetAt) {
+    entry.count = 0
+    entry.resetAt = now + 1000
+  }
+  entry.count++
+  socketEventRate.set(socketId, entry)
+  return entry.count <= env.GAME_WS_RATE_LIMIT
 }
 
 function buildLeaderboard(session: GameSessionState): ParticipantScore[] {
@@ -209,6 +223,10 @@ export function setupGameSocket(io: Server): void {
     }
 
     socket.on('player:join', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = PlayerJoinSchema.safeParse(rawPayload)
       if (!parsed.success) {
         await emitSessionError(socket, 'INVALID_PAYLOAD', 'Payload inválido')
@@ -249,6 +267,7 @@ export function setupGameSocket(io: Server): void {
 
       await saveSession(session)
       await socket.join(`game:${pin}`)
+      socketPinMap.set(socket.id, pin)
 
       const participant = existingByNickname ?? session.participants[`${session.sessionId}-${nickname}`]
       const totalPlayers = Object.keys(session.participants).length
@@ -256,7 +275,7 @@ export function setupGameSocket(io: Server): void {
       gameNs.to(`game:${pin}`).emit('session:player-joined', { participant, totalPlayers })
     })
 
-    socket.on('host:join', async (rawPayload: unknown) => {
+    socket.on('host:join', async (rawPayload: unknown, ack?: (result: { ok: boolean }) => void) => {
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -282,9 +301,15 @@ export function setupGameSocket(io: Server): void {
       session.hostDisconnectedAt = null
       await saveSession(session)
       await socket.join(`game:${pin}`)
+      socketPinMap.set(socket.id, pin)
+      ack?.({ ok: true })
     })
 
     socket.on('game:start', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -326,6 +351,10 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('game:next-question', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -363,6 +392,10 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('game:reveal-answers', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -395,6 +428,10 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('game:show-leaderboard', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -432,6 +469,10 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('game:end', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = HostActionSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -455,6 +496,10 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('player:answer', async (rawPayload: unknown) => {
+      if (!checkRateLimit(socket.id)) {
+        await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
+        return
+      }
       const parsed = PlayerAnswerSchema.safeParse(rawPayload)
       if (!parsed.success) return
 
@@ -498,44 +543,46 @@ export function setupGameSocket(io: Server): void {
     })
 
     socket.on('disconnect', async () => {
-      for (const [pin, session] of await getAllActiveSessions()) {
-        if (session.hostSocketId === socket.id) {
-          session.hostDisconnectedAt = Date.now()
-          await saveSession(session)
+      const pin = socketPinMap.get(socket.id)
+      socketPinMap.delete(socket.id)
+      socketEventRate.delete(socket.id)
 
-          const timer = setTimeout(async () => {
-            hostReconnectTimers.delete(pin)
-            const current = await getSession(pin)
-            if (!current || current.hostSocketId !== socket.id) return
+      if (!pin) return
 
-            clearGameTimers(pin)
-            gameNs.to(`game:${pin}`).emit('session:error', {
-              code: 'HOST_DISCONNECTED',
-              message: 'O host se desconectou',
-            })
-            current.status = 'FINISHED'
-            await finalizeSession(current)
-          }, 30_000)
+      const session = await getSession(pin)
+      if (!session) return
 
-          hostReconnectTimers.set(pin, timer)
-          return
-        }
+      if (session.hostSocketId === socket.id) {
+        session.hostDisconnectedAt = Date.now()
+        await saveSession(session)
 
-        const participant = Object.values(session.participants).find(
-          (p) => p.socketId === socket.id,
-        )
-        if (participant) {
-          participant.isConnected = false
-          await saveSession(session)
-          return
-        }
+        const timer = setTimeout(async () => {
+          hostReconnectTimers.delete(pin)
+          const current = await getSession(pin)
+          if (!current || current.hostSocketId !== socket.id) return
+
+          clearGameTimers(pin)
+          gameNs.to(`game:${pin}`).emit('session:error', {
+            code: 'HOST_DISCONNECTED',
+            message: 'O host se desconectou',
+          })
+          current.status = 'FINISHED'
+          await finalizeSession(current)
+        }, 30_000)
+
+        hostReconnectTimers.set(pin, timer)
+        return
+      }
+
+      const participant = Object.values(session.participants).find(
+        (p) => p.socketId === socket.id,
+      )
+      if (participant) {
+        participant.isConnected = false
+        await saveSession(session)
       }
     })
 
     void hostUserId
   })
-}
-
-async function getAllActiveSessions(): Promise<[string, GameSessionState][]> {
-  return []
 }

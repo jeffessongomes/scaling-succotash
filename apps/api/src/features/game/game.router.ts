@@ -1,6 +1,6 @@
 import { Router, type Router as IRouter } from 'express'
 import { requireAuth } from '../../shared/middleware/require-auth.js'
-import { BadRequestError, NotFoundError } from '../../shared/errors/http-errors.js'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors/http-errors.js'
 import { CreateSessionBodySchema } from './game.schemas.js'
 import { createSession, getSessionByPin, finalizeSession } from './game.service.js'
 
@@ -39,6 +39,10 @@ gameRouter.delete('/sessions/:pin', requireAuth, async (req, res, next) => {
     const session = await getSessionByPin(req.params['pin'] as string)
     if (!session) {
       next(new NotFoundError('Sessão não encontrada'))
+      return
+    }
+    if (session.authorId !== req.user!.id) {
+      next(new ForbiddenError('Apenas o criador da sessão pode encerrá-la'))
       return
     }
     await finalizeSession(session)

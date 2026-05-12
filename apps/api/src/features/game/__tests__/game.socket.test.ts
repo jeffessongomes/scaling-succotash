@@ -47,6 +47,7 @@ function createLobbySession(pin = '482971') {
     sessionId: 'session-abc',
     pin,
     quizId: 'quiz-xyz',
+    authorId: 'user-teacher-001',
     hostSocketId: '',
     status: 'LOBBY' as const,
     currentQuestionIndex: 0,
@@ -95,8 +96,9 @@ function connectAndWait(socket: ClientSocket): Promise<void> {
 
 async function joinRoom(socket: ClientSocket, pin: string, sessionState: ReturnType<typeof createLobbySession>): Promise<void> {
   mockCache.getSession.mockResolvedValueOnce({ ...sessionState, hostSocketId: '' })
-  socket.emit('host:join', { pin })
-  await new Promise((r) => setTimeout(r, 80))
+  await new Promise<void>((resolve) => {
+    socket.emit('host:join', { pin }, () => resolve())
+  })
 }
 
 describe('game.socket', () => {
@@ -328,12 +330,14 @@ describe('game.socket', () => {
         questions: [{ id: 'q-1', timeLimitSecs: 30 }],
       })
 
+      const answerReceivedPromise = waitForEvent<unknown>(hostSocket, 'session:answer-received', 5000)
+
       playerSocket.emit('player:answer', {
         pin: '482971', questionId: 'q-1',
         optionId: 'opt-correct', answeredInMs: 5000,
       })
 
-      await new Promise((r) => setTimeout(r, 500))
+      await answerReceivedPromise
 
       expect(mockCache.saveAnswer).toHaveBeenCalledWith(
         '482971', 'q-1', participantId, 'opt-correct', 5000,

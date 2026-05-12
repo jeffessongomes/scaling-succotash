@@ -4,6 +4,7 @@ export interface GameSessionState {
   sessionId: string
   pin: string
   quizId: string
+  authorId: string
   hostSocketId: string
   status: SessionStatus
   currentQuestionIndex: number
