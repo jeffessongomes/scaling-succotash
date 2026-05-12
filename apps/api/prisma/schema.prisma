@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(TEACHER)
+  quizzes      Quiz[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Quiz {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  coverImage  String?
+  isPublished Boolean       @default(false)
+  author      User          @relation(fields: [authorId], references: [id])
+  authorId    String
+  questions   Question[]
+  sessions    GameSession[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Question {
+  id            String         @id @default(cuid())
+  quiz          Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId        String
+  text          String
+  mediaType     MediaType?
+  mediaUrl      String?
+  timeLimitSecs Int            @default(30)
+  points        Int            @default(1000)
+  order         Int
+  options       AnswerOption[]
+  gameAnswers   GameAnswer[]
+}
+
+model AnswerOption {
+  id         String      @id @default(cuid())
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  text       String
+  isCorrect  Boolean
+  color      OptionColor
+  order      Int
+}
+
+model GameSession {
+  id                   String            @id @default(cuid())
+  quiz                 Quiz              @relation(fields: [quizId], references: [id])
+  quizId               String
+  pin                  String            @unique
+  status               SessionStatus     @default(LOBBY)
+  currentQuestionIndex Int               @default(0)
+  participants         GameParticipant[]
+  answers              GameAnswer[]
+  startedAt            DateTime?
+  endedAt              DateTime?
+  createdAt            DateTime          @default(now())
+}
+
+model GameParticipant {
+  id        String       @id @default(cuid())
+  session   GameSession  @relation(fields: [sessionId], references: [id])
+  sessionId String
+  nickname  String
+  avatarId  String
+  score     Int          @default(0)
+  answers   GameAnswer[]
+  joinedAt  DateTime     @default(now())
+
+  @@unique([sessionId, nickname])
+}
+
+model GameAnswer {
+  id            String          @id @default(cuid())
+  session       GameSession     @relation(fields: [sessionId], references: [id])
+  sessionId     String
+  participant   GameParticipant @relation(fields: [participantId], references: [id])
+  participantId String
+  question      Question        @relation(fields: [questionId], references: [id])
+  questionId    String
+  optionId      String
+  isCorrect     Boolean
+  pointsEarned  Int
+  answeredInMs  Int
+  answeredAt    DateTime        @default(now())
+
+  @@unique([participantId, questionId])
+}
+
+enum Role {
+  TEACHER
+  ADMIN
+}
+
+enum SessionStatus {
+  LOBBY
+  ACTIVE
+  QUESTION
+  REVEAL
+  LEADERBOARD
+  FINISHED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum OptionColor {
+  RED
+  BLUE
+  YELLOW
+  GREEN
+}
