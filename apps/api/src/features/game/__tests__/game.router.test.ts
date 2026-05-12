@@ -214,5 +214,16 @@ describe('game.router', () => {
       expect(res.status).toBe(403)
       expect(mockGameService.finalizeSession).not.toHaveBeenCalled()
     })
+
+    it('should return 401 when not authenticated', async () => {
+      mockRequireAuth.mockImplementationOnce((_req, _res, next) => {
+        next(new UnauthorizedError())
+      })
+
+      const res = await request(app).delete('/api/sessions/482971')
+
+      expect(res.status).toBe(401)
+      expect(mockGameService.finalizeSession).not.toHaveBeenCalled()
+    })
   })
 })

@@ -1,5 +1,8 @@
-import jwt from 'jsonwebtoken'
 import type { Server, Socket } from 'socket.io'
+
+interface GameEmitter {
+  to(room: string): { emit(ev: string, ...args: unknown[]): void }
+}
 import { env } from '../../config/env.js'
 import {
   saveSession,
@@ -18,10 +21,6 @@ import {
 } from './game.schemas.js'
 import type { GameSessionState, ParticipantScore } from './game.types.js'
 import { prisma } from '../../config/database.js'
-
-interface JwtPayload {
-  sub: string
-}
 
 const activeTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const activeIntervals = new Map<string, ReturnType<typeof setInterval>>()
@@ -73,7 +72,7 @@ async function getSessionOrError(socket: Socket, pin: string): Promise<GameSessi
   return session
 }
 
-async function handleQuestionStart(io: Server, session: GameSessionState): Promise<void> {
+async function handleQuestionStart(io: GameEmitter, session: GameSessionState): Promise<void> {
   const quiz = await prisma.quiz.findUnique({
     where: { id: session.quizId },
     select: {
@@ -144,7 +143,7 @@ async function handleQuestionStart(io: Server, session: GameSessionState): Promi
 }
 
 async function revealAnswers(
-  io: Server,
+  io: GameEmitter,
   session: GameSessionState,
   questionId: string,
   _correctOptionId: string,
@@ -210,18 +209,6 @@ export function setupGameSocket(io: Server): void {
   const gameNs = io.of('/game')
 
   gameNs.on('connection', (socket: Socket) => {
-    let hostUserId: string | null = null
-
-    const authToken = (socket.handshake.auth as Record<string, string>)['token']
-    if (authToken) {
-      try {
-        const payload = jwt.verify(authToken, env.JWT_SECRET) as JwtPayload
-        hostUserId = payload.sub
-      } catch {
-        // not authenticated as host — player connection
-      }
-    }
-
     socket.on('player:join', async (rawPayload: unknown) => {
       if (!checkRateLimit(socket.id)) {
         await emitSessionError(socket, 'RATE_LIMITED', 'Muitas requisições por segundo')
@@ -342,7 +329,7 @@ export function setupGameSocket(io: Server): void {
         assertTransition(session.status, 'QUESTION')
         session.status = 'QUESTION'
         await saveSession(session)
-        await handleQuestionStart(gameNs as unknown as Server, session)
+        await handleQuestionStart(gameNs, session)
       } catch (err) {
         if (err instanceof InvalidTransitionError) {
           await emitSessionError(socket, 'INVALID_TRANSITION', err.message)
@@ -383,7 +370,7 @@ export function setupGameSocket(io: Server): void {
         session.status = 'QUESTION'
         session.currentQuestionIndex = nextIndex
         await saveSession(session)
-        await handleQuestionStart(gameNs as unknown as Server, session)
+        await handleQuestionStart(gameNs, session)
       } catch (err) {
         if (err instanceof InvalidTransitionError) {
           await emitSessionError(socket, 'INVALID_TRANSITION', err.message)
@@ -424,7 +411,7 @@ export function setupGameSocket(io: Server): void {
       const questionId = quiz?.questions[session.currentQuestionIndex]?.id
       if (!questionId) return
 
-      await revealAnswers(gameNs as unknown as Server, session, questionId, '')
+      await revealAnswers(gameNs, session, questionId, '')
     })
 
     socket.on('game:show-leaderboard', async (rawPayload: unknown) => {
@@ -583,6 +570,5 @@ export function setupGameSocket(io: Server): void {
       }
     })
 
-    void hostUserId
   })
 }

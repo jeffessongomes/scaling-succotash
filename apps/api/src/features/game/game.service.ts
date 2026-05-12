@@ -13,6 +13,7 @@ import {
   deleteAnswers,
 } from '../../infrastructure/cache/game-state.cache.js'
 import { generateUniquePin } from '../../shared/utils/pin-generator.js'
+import { calculateScore } from '../../shared/utils/scoring.js'
 import type { CreateSessionBody } from './game.schemas.js'
 import type { GameSessionState } from './game.types.js'
 
@@ -178,6 +179,9 @@ export async function finalizeSession(session: GameSessionState): Promise<void> 
         const correctOption = question.options.find((o) => o.isCorrect)
         const isCorrect = answer.optionId === correctOption?.id
         const timeLimitMs = question.timeLimitSecs * 1000
+        const pointsEarned = isCorrect
+          ? calculateScore(question.points, timeLimitMs, answer.answeredInMs)
+          : 0
 
         answerRecords.push({
           sessionId: session.sessionId,
@@ -185,7 +189,7 @@ export async function finalizeSession(session: GameSessionState): Promise<void> 
           questionId: question.id,
           optionId: answer.optionId,
           isCorrect,
-          pointsEarned: participant.score,
+          pointsEarned,
           answeredInMs: answer.answeredInMs,
           answeredAt: new Date(now.getTime() - (timeLimitMs - answer.answeredInMs)),
         })
