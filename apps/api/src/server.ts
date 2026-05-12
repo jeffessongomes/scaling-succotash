@@ -2,14 +2,17 @@ import http from 'http'
 import { Server } from 'socket.io'
 import { createApp } from './app.js'
 import { env } from './config/env.js'
+import { setupGameSocket } from './features/game/game.socket.js'
 
 async function bootstrap() {
   const app = createApp()
   const server = http.createServer(app)
 
-  const _io = new Server(server, {
+  const io = new Server(server, {
     cors: { origin: env.NEXTAUTH_URL },
   })
+
+  setupGameSocket(io)
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {

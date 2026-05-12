@@ -8,6 +8,7 @@ import { userRouter } from './features/user/user.router.js'
 import { questionRouter } from './features/question/question.router.js'
 import { optionRouter } from './features/option/option.router.js'
 import { quizRouter } from './features/quiz/quiz.router.js'
+import { gameRouter } from './features/game/game.router.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 export function createApp(): Express {
@@ -31,6 +32,7 @@ export function createApp(): Express {
   app.use('/api', quizRouter)
   app.use('/api', questionRouter)
   app.use('/api', optionRouter)
+  app.use('/api', gameRouter)
   app.use(errorHandler)
 
   return app
