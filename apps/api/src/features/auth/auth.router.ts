@@ -22,8 +22,8 @@ authRouter.post('/login', async (req, res, next) => {
       next(new BadRequestError('Dados de entrada inválidos'))
       return
     }
-    const user = await validateCredentials(result.data.email, result.data.password)
-    res.json(user)
+    const loginResult = await validateCredentials(result.data.email, result.data.password)
+    res.json(loginResult)
   } catch (err) {
     next(err)
   }

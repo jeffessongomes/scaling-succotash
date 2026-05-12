@@ -13,9 +13,13 @@ model User {
   email        String    @unique
   passwordHash String
   role         Role      @default(TEACHER)
+  isActive     Boolean   @default(true)
   quizzes      Quiz[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([isActive])
 }
 
 model Quiz {
