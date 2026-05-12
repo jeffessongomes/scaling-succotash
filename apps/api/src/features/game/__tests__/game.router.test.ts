@@ -208,7 +208,45 @@ describe('game.router', () => {
       expect(res.status).toBe(404)
     })
 
-    it('should not expose hostSocketId or hostDisconnectedAt in response', async () => {
+    it('should return 404 when session status is REVEAL', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'REVEAL',
+        currentQuestionIndex: 2,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(404)
+    })
+
+    it('should return 404 when session status is LEADERBOARD', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'LEADERBOARD',
+        currentQuestionIndex: 2,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(404)
+    })
+
+    it('should not expose internal fields in response', async () => {
       mockGameService.getSessionByPin.mockResolvedValueOnce({
         sessionId: 'session-abc',
         pin: '482971',
@@ -218,7 +256,7 @@ describe('game.router', () => {
         participants: {},
         authorId: 'user-teacher-001',
         hostSocketId: 'super-secret-socket',
-        questionStartedAt: null,
+        questionStartedAt: 99999,
         hostDisconnectedAt: 12345,
       })
 
@@ -227,6 +265,8 @@ describe('game.router', () => {
       expect(res.status).toBe(200)
       expect(res.body.hostSocketId).toBeUndefined()
       expect(res.body.hostDisconnectedAt).toBeUndefined()
+      expect(res.body.authorId).toBeUndefined()
+      expect(res.body.questionStartedAt).toBeUndefined()
     })
 
     it('should return participantCount instead of participants object', async () => {
