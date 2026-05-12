@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import request from 'supertest'
 import type { User } from '@prisma/client'
 
+const createUserRecord = (overrides?: Partial<User>): User => ({
+  id: 'clxxx',
+  name: 'Ana Professora',
+  email: 'ana@escola.edu.br',
+  passwordHash: 'hashed_password',
+  role: 'TEACHER',
+  createdAt: new Date('2026-05-12T00:00:00.000Z'),
+  updatedAt: new Date('2026-05-12T00:00:00.000Z'),
+  ...overrides,
+})
+
 vi.mock('../../../config/database.js', () => ({
   prisma: {
     user: {
@@ -107,15 +118,7 @@ describe('Auth Router', () => {
     it('should return 200 with user data when credentials are valid', async () => {
       const { prisma } = await import('../../../config/database.js')
       const argon2 = await import('argon2')
-      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
-        id: 'clxxx',
-        name: 'Ana Professora',
-        email: 'ana@escola.edu.br',
-        passwordHash: 'hashed_password',
-        role: 'TEACHER',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(createUserRecord())
       vi.mocked(argon2.default.verify).mockResolvedValueOnce(true)
 
       const { createApp } = await import('../../../app.js')
@@ -150,15 +153,7 @@ describe('Auth Router', () => {
     it('should return 401 when password is incorrect', async () => {
       const { prisma } = await import('../../../config/database.js')
       const argon2 = await import('argon2')
-      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
-        id: 'clxxx',
-        name: 'Ana Professora',
-        email: 'ana@escola.edu.br',
-        passwordHash: 'hashed_password',
-        role: 'TEACHER',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(createUserRecord())
       vi.mocked(argon2.default.verify).mockResolvedValueOnce(false)
 
       const { createApp } = await import('../../../app.js')
@@ -172,7 +167,7 @@ describe('Auth Router', () => {
       expect(response.body.error).toBe('Credenciais inválidas')
     })
 
-    it('should return 400 when body is invalid', async () => {
+    it('should return 400 with generic message when body is invalid', async () => {
       const { createApp } = await import('../../../app.js')
       const app = createApp()
       const response = await request(app).post('/auth/login').send({
@@ -180,6 +175,7 @@ describe('Auth Router', () => {
       })
 
       expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Dados de entrada inválidos')
     })
   })
 })
