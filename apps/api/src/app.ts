@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit'
 import { healthRouter } from './routes/health.js'
 import { authRouter } from './features/auth/auth.router.js'
 import { userRouter } from './features/user/user.router.js'
+import { questionRouter } from './features/question/question.router.js'
+import { optionRouter } from './features/option/option.router.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 export function createApp(): Express {
@@ -25,6 +27,8 @@ export function createApp(): Express {
   app.use('/health', healthRouter)
   app.use('/auth', authRouter)
   app.use('/api/users', userRouter)
+  app.use('/api', questionRouter)
+  app.use('/api', optionRouter)
   app.use(errorHandler)
 
   return app
