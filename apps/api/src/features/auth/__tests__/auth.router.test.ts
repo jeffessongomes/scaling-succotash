@@ -8,6 +8,7 @@ const createUserRecord = (overrides?: Partial<User>): User => ({
   email: 'ana@escola.edu.br',
   passwordHash: 'hashed_password',
   role: 'TEACHER',
+  isActive: true,
   createdAt: new Date('2026-05-12T00:00:00.000Z'),
   updatedAt: new Date('2026-05-12T00:00:00.000Z'),
   ...overrides,
@@ -33,6 +34,12 @@ vi.mock('argon2', () => ({
 
 vi.mock('../../../config/redis.js', () => ({
   redis: { ping: vi.fn() },
+}))
+
+vi.mock('jsonwebtoken', () => ({
+  default: {
+    sign: vi.fn().mockReturnValue('mock.jwt.token'),
+  },
 }))
 
 describe('Auth Router', () => {
@@ -115,7 +122,7 @@ describe('Auth Router', () => {
   })
 
   describe('POST /auth/login', () => {
-    it('should return 200 with user data when credentials are valid', async () => {
+    it('should return 200 with token and user when credentials are valid', async () => {
       const { prisma } = await import('../../../config/database.js')
       const argon2 = await import('argon2')
       vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(createUserRecord())
@@ -129,10 +136,28 @@ describe('Auth Router', () => {
       })
 
       expect(response.status).toBe(200)
-      expect(response.body.id).toBe('clxxx')
-      expect(response.body.email).toBe('ana@escola.edu.br')
-      expect(response.body.role).toBe('TEACHER')
-      expect(response.body.passwordHash).toBeUndefined()
+      expect(response.body.token).toBeDefined()
+      expect(response.body.user.id).toBe('clxxx')
+      expect(response.body.user.email).toBe('ana@escola.edu.br')
+      expect(response.body.user.role).toBe('TEACHER')
+      expect(response.body.user.passwordHash).toBeUndefined()
+    })
+
+    it('should return 401 when user account is deactivated', async () => {
+      const { prisma } = await import('../../../config/database.js')
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(
+        createUserRecord({ isActive: false }),
+      )
+
+      const { createApp } = await import('../../../app.js')
+      const app = createApp()
+      const response = await request(app).post('/auth/login').send({
+        email: 'ana@escola.edu.br',
+        password: 'senha123',
+      })
+
+      expect(response.status).toBe(401)
+      expect(response.body.error).toBe('Conta desativada')
     })
 
     it('should return 401 when email is not found', async () => {

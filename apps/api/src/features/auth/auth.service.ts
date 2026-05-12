@@ -1,5 +1,7 @@
 import argon2 from 'argon2'
+import jwt, { type SignOptions } from 'jsonwebtoken'
 import { prisma } from '../../config/database.js'
+import { env } from '../../config/env.js'
 import { ConflictError, UnauthorizedError } from '../../shared/errors/http-errors.js'
 
 const ARGON2_OPTIONS = {
@@ -23,7 +25,16 @@ export async function createFirstAdmin(name: string, email: string, password: st
 export async function validateCredentials(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } })
   if (!user) throw new UnauthorizedError('Credenciais inválidas')
+  if (!user.isActive) throw new UnauthorizedError('Conta desativada')
   const valid = await argon2.verify(user.passwordHash, password)
   if (!valid) throw new UnauthorizedError('Credenciais inválidas')
-  return { id: user.id, name: user.name, email: user.email, role: user.role }
+  const token = jwt.sign(
+    { sub: user.id, role: user.role },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'] },
+  )
+  return {
+    token,
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+  }
 }

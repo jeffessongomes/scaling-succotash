@@ -4,6 +4,7 @@ import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 import { healthRouter } from './routes/health.js'
 import { authRouter } from './features/auth/auth.router.js'
+import { userRouter } from './features/user/user.router.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 export function createApp(): Express {
@@ -23,6 +24,7 @@ export function createApp(): Express {
 
   app.use('/health', healthRouter)
   app.use('/auth', authRouter)
+  app.use('/api/users', userRouter)
   app.use(errorHandler)
 
   return app
