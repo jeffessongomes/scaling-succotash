@@ -44,6 +44,8 @@ model Question {
   order         Int
   options       AnswerOption[]
   gameAnswers   GameAnswer[]
+
+  @@index([quizId, order])
 }
 
 model AnswerOption {
@@ -68,6 +70,8 @@ model GameSession {
   startedAt            DateTime?
   endedAt              DateTime?
   createdAt            DateTime          @default(now())
+
+  @@index([status])
 }
 
 model GameParticipant {
@@ -81,6 +85,7 @@ model GameParticipant {
   joinedAt  DateTime     @default(now())
 
   @@unique([sessionId, nickname])
+  @@index([sessionId])
 }
 
 model GameAnswer {
@@ -98,6 +103,8 @@ model GameAnswer {
   answeredAt    DateTime        @default(now())
 
   @@unique([participantId, questionId])
+  @@index([sessionId])
+  @@index([questionId])
 }
 
 enum Role {
