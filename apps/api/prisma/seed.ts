@@ -21,7 +21,7 @@ export const SEED_IDS = {
 } as const
 
 export async function seed(prisma: PrismaClient) {
-  const passwordHash = await argon2.hash('Professor@2026')
+  const passwordHash = await argon2.hash(process.env.SEED_TEACHER_PASSWORD ?? 'Professor@2026')
 
   const teacher = await prisma.user.upsert({
     where: { id: SEED_IDS.teacher },

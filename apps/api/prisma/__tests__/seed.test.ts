@@ -85,18 +85,20 @@ describe('seed', () => {
         },
       })
 
-      await prisma.gameParticipant.create({
-        data: { sessionId: session.id, nickname: 'Aluno Teste', avatarId: 'avatar-1' },
-      })
+      try {
+        await prisma.gameParticipant.create({
+          data: { sessionId: session.id, nickname: 'Aluno Teste', avatarId: 'avatar-1' },
+        })
 
-      await expect(
-        prisma.gameParticipant.create({
-          data: { sessionId: session.id, nickname: 'Aluno Teste', avatarId: 'avatar-2' },
-        }),
-      ).rejects.toMatchObject({ code: 'P2002' })
-
-      await prisma.gameParticipant.deleteMany({ where: { sessionId: session.id } })
-      await prisma.gameSession.delete({ where: { id: session.id } })
+        await expect(
+          prisma.gameParticipant.create({
+            data: { sessionId: session.id, nickname: 'Aluno Teste', avatarId: 'avatar-2' },
+          }),
+        ).rejects.toMatchObject({ code: 'P2002' })
+      } finally {
+        await prisma.gameParticipant.deleteMany({ where: { sessionId: session.id } })
+        await prisma.gameSession.delete({ where: { id: session.id } })
+      }
     })
   })
 
