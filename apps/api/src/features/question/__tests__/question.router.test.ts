@@ -32,6 +32,13 @@ const anotherTeacher: AuthenticatedUser = {
   role: 'TEACHER',
 }
 
+const adminUser: AuthenticatedUser = {
+  id: 'user-admin-001',
+  name: 'Carlos Admin',
+  email: 'carlos@escola.edu.br',
+  role: 'ADMIN',
+}
+
 // ── mocks ──────────────────────────────────────────────────────────────────
 
 const mockRequireAuth = vi.hoisted(() => vi.fn())
@@ -234,6 +241,41 @@ describe('Question Router', () => {
         .send({ text: 'Qual é a capital do Brasil?', mediaUrl: 'https://example.com/img.jpg' })
 
       expect(response.status).toBe(400)
+    })
+
+    it('should return 400 when mediaType is provided without mediaUrl', async () => {
+      asTeacher()
+
+      const { createApp } = await import('../../../app.js')
+      const app = createApp()
+      const response = await request(app)
+        .post('/api/quizzes/quiz-001/questions')
+        .send({ text: 'Qual é a capital do Brasil?', mediaType: 'IMAGE' })
+
+      expect(response.status).toBe(400)
+    })
+
+    it('should return 201 when ADMIN creates question in another teacher quiz', async () => {
+      const { prisma } = await import('../../../config/database.js')
+      asTeacher(adminUser)
+      vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce({
+        id: 'quiz-002',
+        authorId: 'user-teacher-002',
+      } as never)
+      vi.mocked(prisma.question.aggregate).mockResolvedValueOnce({ _max: { order: null } } as never)
+      vi.mocked(prisma.question.create).mockResolvedValueOnce(
+        createQuestionRecord({ quizId: 'quiz-002' }) as unknown as Question & {
+          options: AnswerOption[]
+        },
+      )
+
+      const { createApp } = await import('../../../app.js')
+      const app = createApp()
+      const response = await request(app)
+        .post('/api/quizzes/quiz-002/questions')
+        .send({ text: 'Qual é a capital do Brasil?' })
+
+      expect(response.status).toBe(201)
     })
   })
 

@@ -30,6 +30,13 @@ const anotherTeacher: AuthenticatedUser = {
   role: 'TEACHER',
 }
 
+const adminUser: AuthenticatedUser = {
+  id: 'user-admin-001',
+  name: 'Carlos Admin',
+  email: 'carlos@escola.edu.br',
+  role: 'ADMIN',
+}
+
 // ── mocks ──────────────────────────────────────────────────────────────────
 
 const mockRequireAuth = vi.hoisted(() => vi.fn())
@@ -329,6 +336,22 @@ describe('Option Router', () => {
       const response = await request(app).delete('/api/options/nonexistent-option')
 
       expect(response.status).toBe(404)
+    })
+
+    it('should return 204 when ADMIN deletes option from another teacher question', async () => {
+      const { prisma } = await import('../../../config/database.js')
+      asTeacher(adminUser)
+      vi.mocked(prisma.answerOption.findUnique).mockResolvedValueOnce({
+        ...createOptionRecord(),
+        question: { quiz: { authorId: anotherTeacher.id } },
+      } as never)
+      vi.mocked(prisma.answerOption.delete).mockResolvedValueOnce(createOptionRecord())
+
+      const { createApp } = await import('../../../app.js')
+      const app = createApp()
+      const response = await request(app).delete('/api/options/option-001')
+
+      expect(response.status).toBe(204)
     })
   })
 })
