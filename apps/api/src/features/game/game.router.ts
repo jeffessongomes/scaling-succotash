@@ -27,8 +27,14 @@ gameRouter.get('/game-sessions/:pin', async (req, res, next) => {
       next(new NotFoundError('Sessão não encontrada ou indisponível'))
       return
     }
-    const { hostSocketId: _host, hostDisconnectedAt: _hda, participants, ...rest } = session
-    res.json({ ...rest, participantCount: Object.keys(participants).length })
+    res.json({
+      sessionId: session.sessionId,
+      pin: session.pin,
+      status: session.status,
+      currentQuestionIndex: session.currentQuestionIndex,
+      quizId: session.quizId,
+      participantCount: Object.keys(session.participants).length,
+    })
   } catch (err) {
     next(err)
   }
