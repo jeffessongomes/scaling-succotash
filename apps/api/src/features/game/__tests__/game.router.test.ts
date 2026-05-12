@@ -6,7 +6,6 @@ import {
   UnprocessableEntityError,
   NotFoundError,
   ConflictError,
-  ForbiddenError,
 } from '../../../shared/errors/http-errors.js'
 
 const teacherUser: AuthenticatedUser = {
@@ -24,6 +23,7 @@ const { mockGameService } = vi.hoisted(() => ({
   mockGameService: {
     createSession: vi.fn(),
     getSessionByPin: vi.fn(),
+    getSessionById: vi.fn(),
     finalizeSession: vi.fn(),
   },
 }))
@@ -48,7 +48,7 @@ describe('game.router', () => {
     app = createApp()
   })
 
-  describe('POST /api/sessions', () => {
+  describe('POST /api/game-sessions', () => {
     it('should return 201 with session data when quiz is published', async () => {
       mockGameService.createSession.mockResolvedValueOnce({
         sessionId: 'session-abc',
@@ -59,7 +59,7 @@ describe('game.router', () => {
       })
 
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .set('Authorization', 'Bearer token')
         .send({ quizId: 'quiz-abc' })
 
@@ -70,7 +70,7 @@ describe('game.router', () => {
 
     it('should return 400 when body is invalid', async () => {
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .set('Authorization', 'Bearer token')
         .send({})
 
@@ -83,7 +83,7 @@ describe('game.router', () => {
       })
 
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .send({ quizId: 'quiz-abc' })
 
       expect(res.status).toBe(401)
@@ -95,7 +95,7 @@ describe('game.router', () => {
       )
 
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .set('Authorization', 'Bearer token')
         .send({ quizId: 'quiz-abc' })
 
@@ -108,7 +108,7 @@ describe('game.router', () => {
       )
 
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .set('Authorization', 'Bearer token')
         .send({ quizId: 'quiz-nonexistent' })
 
@@ -121,7 +121,7 @@ describe('game.router', () => {
       )
 
       const res = await request(app)
-        .post('/api/sessions')
+        .post('/api/game-sessions')
         .set('Authorization', 'Bearer token')
         .send({ quizId: 'quiz-abc' })
 
@@ -129,12 +129,33 @@ describe('game.router', () => {
     })
   })
 
-  describe('GET /api/sessions/:pin', () => {
-    it('should return 200 with session state when PIN exists', async () => {
+  describe('GET /api/game-sessions/:pin', () => {
+    it('should return 200 with session data when PIN exists and status is LOBBY', async () => {
       mockGameService.getSessionByPin.mockResolvedValueOnce({
         sessionId: 'session-abc',
         pin: '482971',
         status: 'LOBBY',
+        currentQuestionIndex: 0,
+        quizId: 'quiz-abc',
+        participants: { 'p-1': { id: 'p-1', nickname: 'João', avatarId: '1', score: 0, socketId: 's1', isConnected: true } },
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(200)
+      expect(res.body.pin).toBe('482971')
+      expect(res.body.participantCount).toBe(1)
+    })
+
+    it('should return 200 when status is ACTIVE', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'ACTIVE',
         currentQuestionIndex: 0,
         quizId: 'quiz-abc',
         participants: {},
@@ -144,24 +165,106 @@ describe('game.router', () => {
         hostDisconnectedAt: null,
       })
 
-      const res = await request(app).get('/api/sessions/482971')
+      const res = await request(app).get('/api/game-sessions/482971')
 
       expect(res.status).toBe(200)
-      expect(res.body.pin).toBe('482971')
+    })
+
+    it('should return 404 when session status is FINISHED', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'FINISHED',
+        currentQuestionIndex: 5,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(404)
+    })
+
+    it('should return 404 when session status is QUESTION', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'QUESTION',
+        currentQuestionIndex: 2,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: Date.now(),
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(404)
+    })
+
+    it('should not expose hostSocketId or hostDisconnectedAt in response', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'LOBBY',
+        currentQuestionIndex: 0,
+        quizId: 'quiz-abc',
+        participants: {},
+        authorId: 'user-teacher-001',
+        hostSocketId: 'super-secret-socket',
+        questionStartedAt: null,
+        hostDisconnectedAt: 12345,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(200)
+      expect(res.body.hostSocketId).toBeUndefined()
+      expect(res.body.hostDisconnectedAt).toBeUndefined()
+    })
+
+    it('should return participantCount instead of participants object', async () => {
+      mockGameService.getSessionByPin.mockResolvedValueOnce({
+        sessionId: 'session-abc',
+        pin: '482971',
+        status: 'LOBBY',
+        currentQuestionIndex: 0,
+        quizId: 'quiz-abc',
+        participants: {
+          'p-1': { id: 'p-1', nickname: 'Maria', avatarId: '2', score: 0, socketId: 's1', isConnected: true },
+          'p-2': { id: 'p-2', nickname: 'José', avatarId: '3', score: 0, socketId: 's2', isConnected: true },
+        },
+        authorId: 'user-teacher-001',
+        hostSocketId: 'socket-1',
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+      })
+
+      const res = await request(app).get('/api/game-sessions/482971')
+
+      expect(res.status).toBe(200)
+      expect(res.body.participantCount).toBe(2)
+      expect(res.body.participants).toBeUndefined()
     })
 
     it('should return 404 when PIN does not exist', async () => {
       mockGameService.getSessionByPin.mockResolvedValueOnce(null)
 
-      const res = await request(app).get('/api/sessions/000000')
+      const res = await request(app).get('/api/game-sessions/000000')
 
       expect(res.status).toBe(404)
     })
   })
 
-  describe('DELETE /api/sessions/:pin', () => {
-    it('should return 204 and finalize the session when authenticated', async () => {
-      mockGameService.getSessionByPin.mockResolvedValueOnce({
+  describe('DELETE /api/game-sessions/:id', () => {
+    it('should return 204 and finalize the session when authenticated and owner', async () => {
+      mockGameService.getSessionById.mockResolvedValueOnce({
         sessionId: 'session-abc',
         pin: '482971',
         status: 'LOBBY',
@@ -176,25 +279,25 @@ describe('game.router', () => {
       mockGameService.finalizeSession.mockResolvedValueOnce(undefined)
 
       const res = await request(app)
-        .delete('/api/sessions/482971')
+        .delete('/api/game-sessions/session-abc')
         .set('Authorization', 'Bearer token')
 
       expect(res.status).toBe(204)
       expect(mockGameService.finalizeSession).toHaveBeenCalledOnce()
     })
 
-    it('should return 404 when session does not exist', async () => {
-      mockGameService.getSessionByPin.mockResolvedValueOnce(null)
+    it('should return 404 when session does not exist by ID', async () => {
+      mockGameService.getSessionById.mockResolvedValueOnce(null)
 
       const res = await request(app)
-        .delete('/api/sessions/000000')
+        .delete('/api/game-sessions/nonexistent-id')
         .set('Authorization', 'Bearer token')
 
       expect(res.status).toBe(404)
     })
 
     it('should return 403 when authenticated user is not the session owner', async () => {
-      mockGameService.getSessionByPin.mockResolvedValueOnce({
+      mockGameService.getSessionById.mockResolvedValueOnce({
         sessionId: 'session-abc',
         pin: '482971',
         status: 'LOBBY',
@@ -208,7 +311,7 @@ describe('game.router', () => {
       })
 
       const res = await request(app)
-        .delete('/api/sessions/482971')
+        .delete('/api/game-sessions/session-abc')
         .set('Authorization', 'Bearer token')
 
       expect(res.status).toBe(403)
@@ -220,7 +323,7 @@ describe('game.router', () => {
         next(new UnauthorizedError())
       })
 
-      const res = await request(app).delete('/api/sessions/482971')
+      const res = await request(app).delete('/api/game-sessions/session-abc')
 
       expect(res.status).toBe(401)
       expect(mockGameService.finalizeSession).not.toHaveBeenCalled()
