@@ -142,6 +142,15 @@ export async function getSessionByPin(pin: string): Promise<GameSessionState | n
   }
 }
 
+export async function getSessionById(id: string): Promise<GameSessionState | null> {
+  const dbSession = await prisma.gameSession.findUnique({
+    where: { id },
+    select: { pin: true },
+  })
+  if (!dbSession) return null
+  return getSessionByPin(dbSession.pin)
+}
+
 export async function finalizeSession(session: GameSessionState): Promise<void> {
   const quiz = await prisma.quiz.findUnique({
     where: { id: session.quizId },

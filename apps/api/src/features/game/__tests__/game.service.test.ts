@@ -43,7 +43,7 @@ vi.mock('../../../config/database.js', () => ({ prisma: mockPrisma }))
 vi.mock('../../../infrastructure/cache/game-state.cache.js', () => mockCache)
 vi.mock('../../../shared/utils/pin-generator.js', () => mockPinGenerator)
 
-const { createSession, getSessionByPin, finalizeSession } = await import('../game.service.js')
+const { createSession, getSessionByPin, getSessionById, finalizeSession } = await import('../game.service.js')
 
 const createQuiz = () => ({
   id: 'quiz-abc',
@@ -150,6 +150,61 @@ describe('game.service', () => {
       mockPrisma.gameSession.findUnique.mockResolvedValueOnce(null)
       const result = await getSessionByPin('000000')
       expect(result).toBeNull()
+    })
+  })
+
+  describe('getSessionById', () => {
+    it('should return session state when ID exists and session is in Redis', async () => {
+      const session: GameSessionState = {
+        sessionId: 'session-abc',
+        pin: '482971',
+        quizId: 'quiz-abc',
+        authorId: 'user-teacher',
+        hostSocketId: 'socket-host-1',
+        status: 'LOBBY',
+        currentQuestionIndex: 0,
+        questionStartedAt: null,
+        hostDisconnectedAt: null,
+        participants: {},
+      }
+      mockPrisma.gameSession.findUnique.mockResolvedValueOnce({ pin: '482971' })
+      mockCache.getSession.mockResolvedValueOnce(session)
+
+      const result = await getSessionById('session-abc')
+
+      expect(result).toEqual(session)
+      expect(mockPrisma.gameSession.findUnique).toHaveBeenCalledWith({
+        where: { id: 'session-abc' },
+        select: { pin: true },
+      })
+    })
+
+    it('should fallback to PostgreSQL when ID exists but session is not in Redis', async () => {
+      mockPrisma.gameSession.findUnique
+        .mockResolvedValueOnce({ pin: '482971' })
+        .mockResolvedValueOnce({
+          id: 'session-abc',
+          pin: '482971',
+          status: 'LOBBY',
+          currentQuestionIndex: 0,
+          quizId: 'quiz-abc',
+          participants: [],
+        })
+      mockCache.getSession.mockResolvedValueOnce(null)
+
+      const result = await getSessionById('session-abc')
+
+      expect(result).not.toBeNull()
+      expect(result?.pin).toBe('482971')
+    })
+
+    it('should return null when session ID does not exist', async () => {
+      mockPrisma.gameSession.findUnique.mockResolvedValueOnce(null)
+
+      const result = await getSessionById('nonexistent-id')
+
+      expect(result).toBeNull()
+      expect(mockCache.getSession).not.toHaveBeenCalled()
     })
   })
 

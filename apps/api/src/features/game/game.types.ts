@@ -1,5 +1,24 @@
 export type SessionStatus = 'LOBBY' | 'ACTIVE' | 'QUESTION' | 'REVEAL' | 'LEADERBOARD' | 'FINISHED'
 
+export const MAX_PARTICIPANTS = 60
+
+export interface CreateSessionResponse {
+  sessionId: string
+  pin: string
+  status: 'LOBBY'
+  quizTitle: string
+  totalQuestions: number
+}
+
+export interface GetSessionByPinResponse {
+  sessionId: string
+  pin: string
+  status: SessionStatus
+  currentQuestionIndex: number
+  quizId: string
+  participantCount: number
+}
+
 export interface GameSessionState {
   sessionId: string
   pin: string
