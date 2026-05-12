@@ -3,7 +3,7 @@ import request from 'supertest'
 import type { Quiz } from '@prisma/client'
 import { UnauthorizedError } from '../../../shared/errors/http-errors.js'
 import type { AuthenticatedUser } from '../../user/user.types.js'
-import type { QuizSummary } from '../quiz.schemas.js'
+import type { QuizSummary, QuizDetail } from '../quiz.schemas.js'
 
 // ── factories ──────────────────────────────────────────────────────────────
 
@@ -29,6 +29,28 @@ const createQuizSummary = (overrides?: Partial<QuizSummary>): QuizSummary => ({
   _count: { questions: 0 },
   createdAt: new Date('2026-01-10T10:00:00Z'),
   updatedAt: new Date('2026-01-10T10:00:00Z'),
+  ...overrides,
+})
+
+const createQuizDetail = (overrides?: Partial<QuizDetail>): QuizDetail => ({
+  ...createQuizSummary(),
+  _count: { questions: 1 },
+  questions: [
+    {
+      id: 'question-001',
+      quizId: 'quiz-001',
+      text: 'Qual é a capital do Brasil?',
+      mediaType: null,
+      mediaUrl: null,
+      timeLimitSecs: 30,
+      points: 100,
+      order: 1,
+      options: [
+        { id: 'option-001', questionId: 'question-001', text: 'Brasília', isCorrect: true, color: 'RED', order: 1 },
+        { id: 'option-002', questionId: 'question-001', text: 'São Paulo', isCorrect: false, color: 'BLUE', order: 2 },
+      ],
+    },
+  ],
   ...overrides,
 })
 
@@ -115,7 +137,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       const summary = createQuizSummary()
-      vi.mocked(prisma.quiz.create).mockResolvedValueOnce(createQuizRecord() as never)
+      vi.mocked(prisma.quiz.create).mockResolvedValueOnce(createQuizSummary() as unknown as Quiz)
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -137,7 +159,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.create).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizSummary({ authorId: teacherUser.id }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -209,7 +231,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       const quizzes = [createQuizRecord(), createQuizRecord({ id: 'quiz-002', title: 'Quiz 2' })]
-      vi.mocked(prisma.quiz.findMany).mockResolvedValueOnce(quizzes as never)
+      vi.mocked(prisma.quiz.findMany).mockResolvedValueOnce(quizzes as unknown as Quiz[])
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -232,7 +254,7 @@ describe('Quiz Router', () => {
         createQuizRecord({ authorId: 'user-teacher-001' }),
         createQuizRecord({ id: 'quiz-002', authorId: 'user-teacher-002' }),
       ]
-      vi.mocked(prisma.quiz.findMany).mockResolvedValueOnce(quizzes as never)
+      vi.mocked(prisma.quiz.findMany).mockResolvedValueOnce(quizzes as unknown as Quiz[])
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -280,7 +302,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord() as never,
+        createQuizDetail() as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -290,6 +312,11 @@ describe('Quiz Router', () => {
 
       expect(res.status).toBe(200)
       expect(res.body).toMatchObject({ id: 'quiz-001', title: 'Quiz de Geografia' })
+      expect(Array.isArray(res.body.questions)).toBe(true)
+      expect(res.body.questions).toHaveLength(1)
+      expect(res.body.questions[0]).toMatchObject({ id: 'question-001', text: 'Qual é a capital do Brasil?' })
+      expect(Array.isArray(res.body.questions[0].options)).toBe(true)
+      expect(res.body.questions[0].options).toHaveLength(2)
     })
 
     it('should return 404 when quiz does not exist', async () => {
@@ -324,10 +351,10 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
       vi.mocked(prisma.quiz.update).mockResolvedValueOnce(
-        createQuizRecord({ title: 'Novo Título' }) as never,
+        createQuizSummary({ title: 'Novo Título' }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -345,7 +372,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher(anotherTeacher)
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -362,10 +389,10 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher(adminUser)
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
       vi.mocked(prisma.quiz.update).mockResolvedValueOnce(
-        createQuizRecord({ title: 'Editado por Admin' }) as never,
+        createQuizSummary({ title: 'Editado por Admin' }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -412,9 +439,9 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
-      vi.mocked(prisma.$transaction).mockResolvedValueOnce([{ count: 0 }, createQuizRecord()] as never)
+      vi.mocked(prisma.$transaction).mockResolvedValueOnce([{ count: 0 }, createQuizRecord()] as unknown as [unknown, Quiz])
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -428,9 +455,9 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
-      vi.mocked(prisma.$transaction).mockResolvedValueOnce([{ count: 1 }, createQuizRecord()] as never)
+      vi.mocked(prisma.$transaction).mockResolvedValueOnce([{ count: 1 }, createQuizRecord()] as unknown as [unknown, Quiz])
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -445,7 +472,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher(anotherTeacher)
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -477,16 +504,16 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique)
-        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as never)
+        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz)
         .mockResolvedValueOnce({
           ...createQuizRecord(),
           questions: [
             { _count: { options: 2 } },
             { _count: { options: 3 } },
           ],
-        } as never)
+        } as unknown as Quiz)
       vi.mocked(prisma.quiz.update).mockResolvedValueOnce(
-        createQuizRecord({ isPublished: true }) as never,
+        createQuizSummary({ isPublished: true }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -504,11 +531,11 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique)
-        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as never)
+        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz)
         .mockResolvedValueOnce({
           ...createQuizRecord(),
           questions: [],
-        } as never)
+        } as unknown as Quiz)
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -524,11 +551,11 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique)
-        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as never)
+        .mockResolvedValueOnce(createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz)
         .mockResolvedValueOnce({
           ...createQuizRecord(),
           questions: [{ _count: { options: 1 } }],
-        } as never)
+        } as unknown as Quiz)
 
       const { createApp } = await import('../../../app.js')
       const app = createApp()
@@ -544,10 +571,10 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher()
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id, isPublished: true }) as never,
+        createQuizRecord({ authorId: teacherUser.id, isPublished: true }) as unknown as Quiz,
       )
       vi.mocked(prisma.quiz.update).mockResolvedValueOnce(
-        createQuizRecord({ isPublished: false }) as never,
+        createQuizSummary({ isPublished: false }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
@@ -565,7 +592,7 @@ describe('Quiz Router', () => {
       const { prisma } = await import('../../../config/database.js')
       asTeacher(anotherTeacher)
       vi.mocked(prisma.quiz.findUnique).mockResolvedValueOnce(
-        createQuizRecord({ authorId: teacherUser.id }) as never,
+        createQuizRecord({ authorId: teacherUser.id }) as unknown as Quiz,
       )
 
       const { createApp } = await import('../../../app.js')
