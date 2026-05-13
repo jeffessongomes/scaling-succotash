@@ -45,12 +45,20 @@ describe('AnswerOptionForm', () => {
     })
   })
 
-  describe('when existingCorrect is true', () => {
-    it('should disable the correct checkbox', () => {
+  describe('when one option is marked correct', () => {
+    it('should show warning that existing correct option will be replaced', async () => {
+      const user = userEvent.setup()
       render(
-        <AnswerOptionForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} existingCorrect />,
+        <AnswerOptionForm
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+          existingCorrectOptionId="opt-existing"
+        />,
       )
-      expect(screen.getByTestId('chk-toggle-correct')).toBeDisabled()
+
+      await user.click(screen.getByTestId('chk-toggle-correct'))
+
+      expect(await screen.findByTestId('text-replace-correct-warning')).toBeInTheDocument()
     })
   })
 })

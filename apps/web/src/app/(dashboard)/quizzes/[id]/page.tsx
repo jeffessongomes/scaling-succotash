@@ -183,6 +183,14 @@ export default function QuizEditorPage({ params }: { params: Promise<{ id: strin
   }
 
   async function handleAddOption(questionId: string, data: CreateOptionInput) {
+    if (data.isCorrect) {
+      const existingCorrectOpt = questions
+        .find((q) => q.id === questionId)
+        ?.options.find((o) => o.isCorrect)
+      if (existingCorrectOpt) {
+        await editor.editOption.mutateAsync({ id: existingCorrectOpt.id, body: { isCorrect: false } })
+      }
+    }
     await editor.addOption.mutateAsync({ questionId, body: data })
     setAddingOptionFor(null)
   }
@@ -256,10 +264,10 @@ export default function QuizEditorPage({ params }: { params: Promise<{ id: strin
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="mb-3 text-sm font-medium text-gray-700">Nova opção de resposta</p>
             <AnswerOptionForm
-              existingCorrect={
+              existingCorrectOptionId={
                 questions
                   .find((q) => q.id === addingOptionFor)
-                  ?.options.some((o) => o.isCorrect) ?? false
+                  ?.options.find((o) => o.isCorrect)?.id
               }
               onSubmit={(data) => handleAddOption(addingOptionFor, data)}
               onCancel={() => setAddingOptionFor(null)}

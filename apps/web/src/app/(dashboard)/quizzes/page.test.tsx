@@ -38,6 +38,7 @@ vi.mock('next-auth/react', () => ({
 }))
 
 beforeEach(() => {
+  vi.clearAllMocks()
   mockPublishMutateAsync.mockResolvedValue({})
   mockRemoveMutateAsync.mockResolvedValue({})
 })
@@ -113,6 +114,21 @@ describe('QuizzesPage', () => {
       await user.click(screen.getByTestId(`btn-delete-quiz-${quiz.id}`))
 
       expect(await screen.findByTestId('modal-confirm-delete')).toBeInTheDocument()
+    })
+  })
+
+  describe('when delete is confirmed', () => {
+    it('should call remove mutation with quiz id', async () => {
+      const user = userEvent.setup()
+      const quiz = createDraftQuiz({ title: 'Quiz para deletar' })
+      mockUseQuizzes.mockReturnValue({ data: [quiz], isLoading: false, error: null, refetch: vi.fn() })
+
+      render(<QuizzesPage />)
+
+      await user.click(screen.getByTestId(`btn-delete-quiz-${quiz.id}`))
+      await user.click(await screen.findByTestId('btn-confirm-delete'))
+
+      expect(mockRemoveMutateAsync).toHaveBeenCalledWith(quiz.id)
     })
   })
 

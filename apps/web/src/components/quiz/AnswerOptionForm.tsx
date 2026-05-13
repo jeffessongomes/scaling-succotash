@@ -27,14 +27,14 @@ const COLOR_LABELS: Record<OptionColor, string> = {
 interface AnswerOptionFormProps {
   onSubmit: (data: CreateOptionInput) => Promise<void>
   onCancel: () => void
-  existingCorrect?: boolean
+  existingCorrectOptionId?: string
   isSubmitting?: boolean
 }
 
 export function AnswerOptionForm({
   onSubmit,
   onCancel,
-  existingCorrect = false,
+  existingCorrectOptionId,
   isSubmitting = false,
 }: AnswerOptionFormProps) {
   const {
@@ -49,6 +49,7 @@ export function AnswerOptionForm({
   })
 
   const selectedColor = useWatch({ control, name: 'color' }) as OptionColor | undefined
+  const watchedIsCorrect = useWatch({ control, name: 'isCorrect' }) as boolean
 
   return (
     <form
@@ -89,21 +90,24 @@ export function AnswerOptionForm({
         <input type="hidden" {...register('color')} />
       </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <input
-          id="is-correct"
-          data-testid="chk-toggle-correct"
-          type="checkbox"
-          disabled={existingCorrect}
-          {...register('isCorrect')}
-          className="h-4 w-4 rounded border-gray-300"
-        />
-        <label htmlFor="is-correct" className="text-sm text-gray-700">
-          Resposta correta
-          {existingCorrect && (
-            <span className="ml-1 text-xs text-gray-400">(já existe uma correta)</span>
-          )}
-        </label>
+      <div className="mb-3">
+        <div className="flex items-center gap-2">
+          <input
+            id="is-correct"
+            data-testid="chk-toggle-correct"
+            type="checkbox"
+            {...register('isCorrect')}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <label htmlFor="is-correct" className="text-sm text-gray-700">
+            Resposta correta
+          </label>
+        </div>
+        {existingCorrectOptionId && watchedIsCorrect && (
+          <p data-testid="text-replace-correct-warning" className="mt-1 text-xs text-yellow-600">
+            Isso irá desmarcar a opção correta atual
+          </p>
+        )}
       </div>
 
       <div className="flex justify-end gap-2">
