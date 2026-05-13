@@ -40,7 +40,7 @@ export function QuestionControl({ question, answeredCount, onReveal, onEnd }: Qu
         </p>
         <div className="mt-2 flex gap-4 text-sm text-gray-500">
           <span>⏱ {question.timeLimitSecs}s</span>
-          <span>💎 {question.points} pts</span>
+          {question.points !== undefined && <span>💎 {question.points} pts</span>}
         </div>
       </div>
 

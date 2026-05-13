@@ -1,42 +1,38 @@
-import { useState, useEffect, useCallback } from 'react'
-import { socket } from '@/lib/socket'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSession } from 'next-auth/react'
+import { gameSocket } from '@/lib/socket'
+import { createGameSession } from '../api/game.api'
 import type { GamePhase } from '@/types'
 import type { GameSession, GamePlayer, QuestionState, AnswerStats, LeaderboardEntry } from '../types'
 
-interface SessionCreatedPayload {
-  pin: string
-  quizTitle: string
-  totalQuestions: number
-}
-
 interface PlayerJoinedPayload {
-  nickname: string
-  avatarId: string
+  participant: { id: string; nickname: string; avatarId: string; score: number }
   totalPlayers: number
 }
 
 interface QuestionStartPayload {
-  question: { text: string; timeLimitSecs: number; points: number }
+  question: { id: string; text: string }
   questionIndex: number
   totalQuestions: number
+  timeLimitSecs: number
 }
 
 interface AnswerReceivedPayload {
-  totalAnswered: number
+  answeredCount: number
   totalPlayers: number
 }
 
 interface AnswersRevealedPayload {
   correctOptionId: string
-  stats: Record<string, number>
+  distribution: Record<string, number>
 }
 
 interface LeaderboardPayload {
-  top3: LeaderboardEntry[]
+  ranking: LeaderboardEntry[]
 }
 
 interface SessionEndedPayload {
-  finalLeaderboard: LeaderboardEntry[]
+  ranking: LeaderboardEntry[]
 }
 
 interface SessionErrorPayload {
@@ -61,6 +57,7 @@ export interface UseHostGameReturn {
 }
 
 export function useHostGame(quizId: string): UseHostGameReturn {
+  const { data: sessionData } = useSession()
   const [session, setSession] = useState<GameSession | null>(null)
   const [phase, setPhase] = useState<GamePhase>('lobby')
   const [isConnecting, setIsConnecting] = useState(true)
@@ -70,25 +67,38 @@ export function useHostGame(quizId: string): UseHostGameReturn {
   const [answeredCount, setAnsweredCount] = useState(0)
   const [answerStats, setAnswerStats] = useState<AnswerStats | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const initialized = useRef(false)
 
   useEffect(() => {
-    socket.connect()
-    socket.emit('host:create-session', { quizId })
+    const token = (sessionData as { accessToken?: string } | null)?.accessToken
+    if (!token || initialized.current) return
+    initialized.current = true
 
-    function onSessionCreated(payload: SessionCreatedPayload) {
-      setSession({
-        pin: payload.pin,
-        quizId,
-        quizTitle: payload.quizTitle,
-        totalQuestions: payload.totalQuestions,
-        status: 'lobby',
+    createGameSession({ quizId }, token)
+      .then((result) => {
+        setSession({
+          pin: result.pin,
+          quizId,
+          quizTitle: result.quizTitle,
+          totalQuestions: result.totalQuestions,
+          status: 'lobby',
+        })
+        setPhase('lobby')
+        setIsConnecting(false)
+
+        gameSocket.connect()
+        gameSocket.emit('host:join', { pin: result.pin })
       })
-      setPhase('lobby')
-      setIsConnecting(false)
-    }
+      .catch((err: Error) => {
+        setConnectionError(err.message ?? 'Erro ao criar sessão')
+        setIsConnecting(false)
+      })
 
     function onPlayerJoined(payload: PlayerJoinedPayload) {
-      setPlayers((prev) => [...prev, { nickname: payload.nickname, avatarId: payload.avatarId }])
+      setPlayers((prev) => [
+        ...prev,
+        { nickname: payload.participant.nickname, avatarId: payload.participant.avatarId },
+      ])
     }
 
     function onQuestionStart(payload: QuestionStartPayload) {
@@ -99,75 +109,71 @@ export function useHostGame(quizId: string): UseHostGameReturn {
         index: payload.questionIndex,
         total: payload.totalQuestions,
         text: payload.question.text,
-        timeLimitSecs: payload.question.timeLimitSecs,
-        points: payload.question.points,
+        timeLimitSecs: payload.timeLimitSecs,
       })
     }
 
     function onAnswerReceived(payload: AnswerReceivedPayload) {
-      setAnsweredCount(payload.totalAnswered)
+      setAnsweredCount(payload.answeredCount)
     }
 
     function onAnswersRevealed(payload: AnswersRevealedPayload) {
       setPhase('results')
-      setAnswerStats({ correctOptionId: payload.correctOptionId, stats: payload.stats })
+      setAnswerStats({ correctOptionId: payload.correctOptionId, stats: payload.distribution })
     }
 
     function onLeaderboard(payload: LeaderboardPayload) {
       setPhase('leaderboard')
-      setLeaderboard(payload.top3)
+      setLeaderboard(payload.ranking)
     }
 
     function onSessionEnded(payload: SessionEndedPayload) {
       setPhase('finished')
-      setLeaderboard(payload.finalLeaderboard)
+      setLeaderboard(payload.ranking)
     }
 
     function onSessionError(payload: SessionErrorPayload) {
       setConnectionError(payload.message)
-      setIsConnecting(false)
     }
 
-    socket.on('session:created', onSessionCreated)
-    socket.on('session:player-joined', onPlayerJoined)
-    socket.on('session:question-start', onQuestionStart)
-    socket.on('session:answer-received', onAnswerReceived)
-    socket.on('session:answers-revealed', onAnswersRevealed)
-    socket.on('session:leaderboard', onLeaderboard)
-    socket.on('session:ended', onSessionEnded)
-    socket.on('session:error', onSessionError)
+    gameSocket.on('session:player-joined', onPlayerJoined)
+    gameSocket.on('session:question-start', onQuestionStart)
+    gameSocket.on('session:answer-received', onAnswerReceived)
+    gameSocket.on('session:answers-revealed', onAnswersRevealed)
+    gameSocket.on('session:leaderboard', onLeaderboard)
+    gameSocket.on('session:ended', onSessionEnded)
+    gameSocket.on('session:error', onSessionError)
 
     return () => {
-      socket.off('session:created', onSessionCreated)
-      socket.off('session:player-joined', onPlayerJoined)
-      socket.off('session:question-start', onQuestionStart)
-      socket.off('session:answer-received', onAnswerReceived)
-      socket.off('session:answers-revealed', onAnswersRevealed)
-      socket.off('session:leaderboard', onLeaderboard)
-      socket.off('session:ended', onSessionEnded)
-      socket.off('session:error', onSessionError)
-      socket.disconnect()
+      gameSocket.off('session:player-joined', onPlayerJoined)
+      gameSocket.off('session:question-start', onQuestionStart)
+      gameSocket.off('session:answer-received', onAnswerReceived)
+      gameSocket.off('session:answers-revealed', onAnswersRevealed)
+      gameSocket.off('session:leaderboard', onLeaderboard)
+      gameSocket.off('session:ended', onSessionEnded)
+      gameSocket.off('session:error', onSessionError)
+      gameSocket.disconnect()
     }
-  }, [quizId])
+  }, [quizId, sessionData])
 
   const startGame = useCallback(() => {
-    if (session) socket.emit('game:start', { pin: session.pin })
+    if (session) gameSocket.emit('game:start', { pin: session.pin })
   }, [session])
 
   const nextQuestion = useCallback(() => {
-    if (session) socket.emit('game:next-question', { pin: session.pin })
+    if (session) gameSocket.emit('game:next-question', { pin: session.pin })
   }, [session])
 
   const revealAnswers = useCallback(() => {
-    if (session) socket.emit('game:reveal-answers', { pin: session.pin })
+    if (session) gameSocket.emit('game:reveal-answers', { pin: session.pin })
   }, [session])
 
   const showLeaderboard = useCallback(() => {
-    if (session) socket.emit('game:show-leaderboard', { pin: session.pin })
+    if (session) gameSocket.emit('game:show-leaderboard', { pin: session.pin })
   }, [session])
 
   const endGame = useCallback(() => {
-    if (session) socket.emit('game:end', { pin: session.pin })
+    if (session) gameSocket.emit('game:end', { pin: session.pin })
   }, [session])
 
   return {

@@ -18,7 +18,7 @@ export interface QuestionState {
   total: number
   text: string
   timeLimitSecs: number
-  points: number
+  points?: number
 }
 
 export interface AnswerStats {
